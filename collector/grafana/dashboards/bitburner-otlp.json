@@ -1,0 +1,227 @@
+{
+  "uid": "bitburner-otlp",
+  "title": "Bitburner",
+  "tags": ["bitburner", "otlp"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "10s",
+  "time": { "from": "now-30m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Money",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+      "targets": [{ "refId": "A", "expr": "bitburner_player_money" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "color": { "mode": "fixed", "fixedColor": "green" }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Karma",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 4, "y": 0, "w": 4, "h": 4 },
+      "targets": [{ "refId": "A", "expr": "bitburner_player_karma" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "fixed", "fixedColor": "purple" }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Income by Source ($/s)",
+      "description": "rate() over bitburner.player.income. Log scale so small sources stay visible next to big ones.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 8, "y": 0, "w": 16, "h": 12 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (source) (rate(bitburner_player_income_total[$__rate_interval]))",
+          "legendFormat": "{{source}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "min": 1,
+          "custom": {
+            "scaleDistribution": { "type": "log", "log": 10 },
+            "fillOpacity": 5
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Skills",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 0, "y": 4, "w": 8, "h": 8 },
+      "targets": [
+        { "refId": "A", "expr": "bitburner_player_skill", "legendFormat": "{{skill}}" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "fillOpacity": 5 } },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Scripts Running",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 0, "y": 12, "w": 8, "h": 8 },
+      "targets": [
+        { "refId": "A", "expr": "bitburner_scripts_running", "legendFormat": "scripts" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "RAM (owned servers)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 8, "y": 12, "w": 8, "h": 8 },
+      "targets": [
+        { "refId": "A", "expr": "bitburner_servers_ram_used", "legendFormat": "used" },
+        { "refId": "B", "expr": "bitburner_servers_ram_total", "legendFormat": "total" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "decgbytes", "custom": { "fillOpacity": 10 } },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Faction Reputation",
+      "description": "Requires Singularity (SF-4) — empty otherwise.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 16, "y": 12, "w": 8, "h": 8 },
+      "targets": [
+        { "refId": "A", "expr": "bitburner_faction_reputation", "legendFormat": "{{faction}}" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "fillOpacity": 5 } },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Gang Gain Rates (per 200ms cycle)",
+      "description": "Multiply by 5 for per-second rates. Empty when you're not in a gang.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 0, "y": 20, "w": 8, "h": 8 },
+      "targets": [
+        { "refId": "A", "expr": "bitburner_gang_money_gain_rate", "legendFormat": "money" },
+        { "refId": "B", "expr": "bitburner_gang_respect_gain_rate", "legendFormat": "respect" },
+        { "refId": "C", "expr": "bitburner_gang_wanted_gain_rate", "legendFormat": "wanted" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "fillOpacity": 5 } },
+        "overrides": []
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Gang Territory & Power",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 8, "y": 20, "w": 8, "h": 8 },
+      "targets": [
+        { "refId": "A", "expr": "bitburner_gang_territory", "legendFormat": "territory" },
+        { "refId": "B", "expr": "bitburner_gang_power", "legendFormat": "power" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "fillOpacity": 5 } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "territory" },
+            "properties": [{ "id": "unit", "value": "percentunit" }]
+          }
+        ]
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Gang Member Stats",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 16, "y": 20, "w": 8, "h": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "bitburner_gang_member_stat",
+          "legendFormat": "{{member}} {{stat}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "fillOpacity": 0 } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "id": 11,
+      "type": "logs",
+      "title": "Script Logs",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "x": 0, "y": 28, "w": 24, "h": 10 },
+      "targets": [
+        { "refId": "A", "expr": "{service_name=~\".+\"}" }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none",
+        "enableLogDetails": true
+      }
+    },
+    {
+      "id": 12,
+      "type": "traces",
+      "title": "Recent Traces",
+      "description": "Click a trace ID to open the full flame graph in Explore.",
+      "datasource": { "type": "tempo", "uid": "tempo" },
+      "gridPos": { "x": 0, "y": 38, "w": 24, "h": 10 },
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "traceql",
+          "query": "{}",
+          "limit": 20,
+          "tableType": "traces"
+        }
+      ]
+    }
+  ]
+}

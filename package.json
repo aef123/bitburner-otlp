@@ -1,0 +1,13 @@
+{
+  "name": "bitburner-otlp",
+  "version": "1.0.0",
+  "description": "Pure user-space OpenTelemetry (logs, metrics, traces) for Bitburner scripts — zero RAM cost, zero dependencies, no game modifications.",
+  "scripts": {
+    "defs": "curl -s -o NetScriptDefinitions.d.ts https://raw.githubusercontent.com/bitburner-official/bitburner-src/stable/src/ScriptEditor/NetscriptDefinitions.d.ts",
+    "defs:dev": "curl -s -o NetScriptDefinitions.d.ts https://raw.githubusercontent.com/bitburner-official/bitburner-src/dev/src/ScriptEditor/NetscriptDefinitions.d.ts",
+    "build": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
+}

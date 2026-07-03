@@ -1,0 +1,5 @@
+# Game-generated API definitions — fetch your own with `npm run defs`
+NetScriptDefinitions.d.ts
+
+node_modules/
+*.tsbuildinfo

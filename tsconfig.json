@@ -1,0 +1,18 @@
+{
+    "compilerOptions": {
+        "target": "ESNext",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "noImplicitThis": true,
+        "skipLibCheck": true,
+        "strict": true,
+        "esModuleInterop": true,
+        "isolatedModules": true,
+        "outDir": "src/javascript/",
+        "rootDir": "src/Typescript/",
+        "paths": {
+            "*": ["./src/Typescript/*"]
+        }
+    },
+    "include": ["NetScriptDefinitions.d.ts", "src/Typescript/**/*"]
+}

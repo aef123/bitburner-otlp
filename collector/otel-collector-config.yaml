@@ -1,0 +1,55 @@
+# OpenTelemetry Collector config for Bitburner user-space telemetry.
+#
+# The HTTP receiver MUST allow CORS: the game runs in a browser (or Electron),
+# so scripts POST from a page origin — without permissive CORS headers the
+# browser blocks the request before it ever leaves.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+        cors:
+          # "*" is fine for a local stack. To lock it down, list your game's
+          # origin instead, e.g. https://bitburner-official.github.io
+          allowed_origins:
+            - "*"
+          allowed_headers:
+            - "*"
+
+processors:
+  batch: {}
+
+exporters:
+  # Logs -> Loki (native OTLP ingestion, Loki 3.x).
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+
+  # Metrics -> exposed for Prometheus to scrape at :8889/metrics.
+  prometheus:
+    endpoint: 0.0.0.0:8889
+
+  # Traces -> Tempo (OTLP/gRPC).
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  # Uncomment (and add to a pipeline's exporters) to print everything the
+  # collector receives — useful when debugging "is anything arriving at all?".
+  # debug:
+  #   verbosity: detailed
+
+service:
+  pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/loki]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus]
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/tempo]
