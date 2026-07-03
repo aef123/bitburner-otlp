@@ -1,6 +1,6 @@
 # bitburner-otlp
 
-**OpenTelemetry for Bitburner — logs, metrics, and traces from plain user scripts.**
+**OpenTelemetry for Bitburner: logs, metrics, and traces from plain user scripts.**
 
 No game modifications. No `ns` API extensions. No npm dependencies in your scripts. Zero
 script RAM cost. Your Bitburner scripts POST OTLP/JSON straight to an OpenTelemetry
@@ -8,8 +8,8 @@ Collector over the browser's built-in `fetch`, and a bundled docker-compose stac
 everything in **Grafana** (Loki for logs, Prometheus for metrics, Tempo for traces) with a
 ready-made dashboard.
 
-I built this because I wanted real observability for my scripts — not `ns.print` and a
-pile of tail windows — and I didn't want to mod the game or pay a RAM tax to get it.
+I built this because I wanted real observability for my scripts, not `ns.print` and a
+pile of tail windows. And I didn't want to mod the game or pay a RAM tax to get it.
 
 ```
 Bitburner script ──OTLP/HTTP──> OTel Collector ──> Loki ──────┐
@@ -20,7 +20,7 @@ Bitburner script ──OTLP/HTTP──> OTel Collector ──> Loki ────
 ## Why this works (and costs 0 GB of RAM)
 
 - Bitburner scripts run as ES modules in the game's browser page, so the global `fetch`
-  is in scope — and Bitburner's static RAM analysis doesn't charge for it.
+  is in scope. And Bitburner's static RAM analysis doesn't charge for it.
 - The library speaks the OTLP/HTTP **JSON** wire format by hand (~450 lines, no
   `@opentelemetry/*` packages, no bundler needed), so there's nothing to install in-game.
   I looked at the official OpenTelemetry SDK first. It's a non-starter here: it wants a
@@ -45,12 +45,12 @@ docker compose up -d
 | What | Where |
 |------|-------|
 | OTLP receiver (your scripts POST here) | `http://localhost:4318` |
-| Grafana — pre-provisioned Bitburner dashboard, no login | `http://localhost:3000` |
+| Grafana (pre-provisioned Bitburner dashboard, no login) | `http://localhost:3000` |
 | Prometheus (raw metrics, optional) | `http://localhost:9090` |
 
 ### 2. Get the library into your game
 
-**Option A — plain JavaScript, no compiler (easiest).**
+**Option A: plain JavaScript, no compiler (easiest).**
 The files in [`src/javascript/`](src/javascript/) are ready to use as-is. Copy them into
 your game at these paths (in-game `nano`, your usual sync tool, or `wget` from the game
 terminal):
@@ -69,7 +69,7 @@ Then import from your own scripts exactly like any other in-game module:
 import { OtlpClient, OtlpLogger } from "shared/otlpTelemetry";
 ```
 
-**Option B — TypeScript (recommended if you use an external editor).**
+**Option B: TypeScript (recommended if you use an external editor).**
 If you develop with the [official TypeScript template](https://github.com/bitburner-official/typescript-template)
 or your own `tsc` + [bitburner-filesync](https://github.com/bitburner-official/bitburner-filesync)
 pipeline, copy the sources from [`src/Typescript/`](src/Typescript/) into your project's
@@ -96,11 +96,11 @@ run metric-scraper.js
 
 Leave it running on `home`. It polls the game every 10 seconds and exports player money,
 income by source, skills, karma, HP, running-script count, fleet RAM, faction reputation,
-and full gang stats — the dashboard lights up with no further work. Details below.
+and full gang stats. The dashboard lights up with no further work. Details below.
 
 ## Using the library in your own scripts
 
-### Logs, metrics, and traces — the full client
+### Logs, metrics, and traces: the full client
 
 ```js
 import { OtlpClient } from "shared/otlpTelemetry";
@@ -112,17 +112,17 @@ export async function main(ns) {
     resourceAttributes: { "deployment.environment": "home" },
   });
 
-  // LOGS — structured, leveled, with attributes
+  // LOGS: structured, leveled, with attributes
   otel.logs.info("script started", { host: ns.getHostname() });
   otel.logs.error("something broke", { reason: "example" });
 
-  // METRICS — define-on-first-use; attributes become dimensions
+  // METRICS: define-on-first-use; attributes become dimensions
   otel.metrics.counter("hacks", 1, { target: "n00dles" });   // monotonic sum
   otel.metrics.gauge("money", ns.getServerMoneyAvailable("home"));
   otel.metrics.histogram("cycle_ms", 250, { target: "n00dles" });
   otel.metrics.upDownCounter("in_flight", 1);
 
-  // TRACES — handle-based spans; pass `parent` to nest
+  // TRACES: handle-based spans; pass `parent` to nest
   const batch = otel.traces.startSpan("hackBatch", { attributes: { target: "n00dles" } });
   const step = otel.traces.startSpan("weaken", { parent: batch });
   await ns.sleep(100); // ... do the work ...
@@ -136,7 +136,7 @@ export async function main(ns) {
 
 ### Drop-in logger (logs only)
 
-`OtlpLogger` implements this repo's tiny `ILogger` interface and needs zero config — it
+`OtlpLogger` implements this repo's tiny `ILogger` interface and needs zero config. It
 ships logs to `http://localhost:4318` AND echoes them to the script's own tail:
 
 ```js
@@ -157,20 +157,20 @@ export async function main(ns) {
 
 | Field | Default | Meaning |
 |-------|---------|---------|
-| `endpoint` | *(required; `OtlpLogger` defaults it to `http://localhost:4318`)* | Collector base URL — `/v1/logs`, `/v1/metrics`, `/v1/traces` are appended |
+| `endpoint` | *(required; `OtlpLogger` defaults it to `http://localhost:4318`)* | Collector base URL. `/v1/logs`, `/v1/metrics`, `/v1/traces` are appended |
 | `serviceName` | `"bitburner-scripts"` | `service.name` resource attribute |
 | `level` | `LogLevel.INFO` | Minimum log level emitted (metrics/traces always emit) |
 | `resourceAttributes` | `{}` | Extra resource attributes on every signal |
 | `headers` | `{}` | Extra HTTP headers (e.g. auth token) |
 | `maxBatch` | `64` | Flush when buffered logs/spans reach this count |
-| `flushIntervalMs` | `5000` | Also flush (on the next emit) once this much time has passed — there's no background timer |
+| `flushIntervalMs` | `5000` | Also flush (on the next emit) once this much time has passed. There's no background timer |
 | `includeScriptInfo` | `true` | Tag logs/spans with the script's pid/filename/server/args |
 | `histogramBounds` | 0…10000 (12 boundaries, 13 buckets) | Explicit histogram bucket boundaries |
 | `echoToScriptLog` | `false` (`OtlpLogger`: `true`) | Also `ns.print` each log to the script's tail |
 
 ## The metric scraper
 
-`metric-scraper.js` turns the game itself into a metrics source — one long-running script,
+`metric-scraper.js` turns the game itself into a metrics source. One long-running script,
 no instrumentation of your other code required.
 
 ```
@@ -189,14 +189,14 @@ run metric-scraper.js --logLevel 3                 tail it to watch raw income d
 | `bitburner.player.income` | counter | `source` | positive deltas of `ns.getMoneySources()`; income before scraper start isn't counted |
 | `bitburner.scripts.running` | gauge | | every running script, network-wide |
 | `bitburner.servers.ram_used` / `_total` | gauge | | owned servers only (home + purchased, incl. cloud servers) |
-| `bitburner.faction.reputation` | gauge | `faction` | **requires Singularity (SF-4)** — skipped otherwise |
+| `bitburner.faction.reputation` | gauge | `faction` | **requires Singularity (SF-4)**; skipped otherwise |
 | `bitburner.gang.*` | gauge | `faction` | respect, wanted_level, wanted_penalty, territory, power, gain rates, member_count; skipped when not in a gang |
 | `bitburner.gang.member.stat` | gauge | `faction`, `member`, `stat` | six stats per member |
 | `bitburner.gang.member.earned_respect` | gauge | `faction`, `member` | |
 | `bitburner.gang.faction_reputation` | gauge | `faction` | requires SF-4 |
 
 Every series carries a `bitnode` label. Singularity- and gang-dependent metrics are
-feature-detected and skipped cleanly when unavailable — the scraper runs fine on a fresh
+feature-detected and skipped cleanly when unavailable, so the scraper runs fine on a fresh
 BitNode 1 save.
 
 In Prometheus/Grafana the names appear with underscores, and the counter gains a suffix:
@@ -208,15 +208,15 @@ Provisioned automatically by the docker-compose stack (or import
 [`collector/grafana/dashboards/bitburner-otlp.json`](collector/grafana/dashboards/bitburner-otlp.json)
 by hand into any Grafana: Dashboards → New → Import).
 
-- **Player** — money, karma, skills, and income-per-second by source. I log-scaled the
+- **Player**: money, karma, skills, and income-per-second by source. I log-scaled the
   income panel on purpose: hacking income runs orders of magnitude above everything else,
   and on a linear axis it flattens every other source to zero. I learned that one the
   hard way.
-- **Fleet** — running scripts and RAM used vs. total across owned servers.
-- **Factions & Gang** — reputation, gang gain rates (per 200 ms game cycle — multiply by 5
+- **Fleet**: running scripts and RAM used vs. total across owned servers.
+- **Factions & Gang**: reputation, gang gain rates (per 200 ms game cycle; multiply by 5
   for per-second), territory, power, member stats.
-- **Logs** — everything your scripts emit, live, filterable by `service_name`.
-- **Traces** — the 20 most recent traces; click through to the flame graph.
+- **Logs**: everything your scripts emit, live, filterable by `service_name`.
+- **Traces**: the 20 most recent traces; click through to the flame graph.
 
 ## Notes, limits, and honest caveats
 
@@ -226,12 +226,12 @@ rather you know them up front:
 - **Flush on exit is best-effort.** `ns.atExit` can't await; a killed script fires its
   final flush but the browser may cancel the in-flight POST. I can't fully work around
   this. Long-running scripts flushing on an interval lose at most the final batch.
-- **A downed collector doesn't lose your logs — up to a point.** Batches that fail with a
+- **A downed collector doesn't lose your logs, up to a point.** Batches that fail with a
   network error are requeued and retried on the next flush, capped at 20× `maxBatch`
   (oldest dropped first) so a dead collector can't grow your script's memory forever.
   HTTP-level rejections aren't retried; a batch the collector refuses is a poison batch.
 - **No automatic trace context across `await`.** There's no zone/async-hooks machinery in
-  the game realm, so spans don't auto-parent — pass the `parent` handle explicitly. And
+  the game realm, so spans don't auto-parent. Pass the `parent` handle explicitly. And
   don't start a child after its parent has ended; the child becomes a new root trace (the
   library warns in the tail when this happens).
 - **Counters reset when their script restarts.** Cumulative sums are per-client-instance.
@@ -240,7 +240,7 @@ rather you know them up front:
 - **Watch attribute cardinality.** Each unique attribute combination is a retained series
   in script memory until exit. Tags like `target` are fine; don't tag with timestamps.
 - **CORS is mandatory.** If the browser devtools console shows a CORS error, your
-  collector isn't sending the headers — use the bundled config, or add
+  collector isn't sending the headers. Use the bundled config, or add
   `cors: allowed_origins: ["*"]` to your own collector's OTLP HTTP receiver.
 
 ## Troubleshooting
@@ -248,8 +248,8 @@ rather you know them up front:
 | Symptom | Fix |
 |---------|-----|
 | Nothing arrives at all | Is the stack up? `docker compose ps` in `collector/`. Is the endpoint right? Default is `http://localhost:4318`. |
-| Browser console shows a CORS error | Collector config is missing the CORS block — use the bundled `otel-collector-config.yaml`. |
-| `OTLP /v1/... flush failed` in a script's tail | Collector unreachable — wrong port or Docker not running. |
+| Browser console shows a CORS error | Collector config is missing the CORS block. Use the bundled `otel-collector-config.yaml`. |
+| `OTLP /v1/... flush failed` in a script's tail | Collector unreachable. Wrong port, or Docker isn't running. |
 | Metrics in Prometheus but dashboard panels empty | Check the panel time range, and that the scraper has run long enough for `rate()` windows (give it a minute). |
 | Small income sources look like zero | They're being drowned by a big source on a linear axis. The bundled panel is log-scale; keep it that way. |
 | Logs missing below INFO | Raise the client's `level` (e.g. `new OtlpLogger(ns, { level: LogLevel.DEBUG })`). |
@@ -257,13 +257,13 @@ rather you know them up front:
 ## Repository layout
 
 ```
-src/Typescript/          TypeScript sources — copy into your TS project
+src/Typescript/          TypeScript sources (copy into your TS project)
   shared/otlpTelemetry.ts    the library (OtlpClient, OtlpLogger)
   shared/logger.ts           ILogger / LogLevel interfaces + plain in-game Logger
   shared/serverWalker.ts     network-walk helpers (used by the scraper)
   metric-scraper.ts          turnkey game-metrics exporter
   otlp-example.ts            end-to-end smoke test (logs + metrics + traces)
-src/javascript/          Compiled, game-ready JS — copy into the game and use as-is
+src/javascript/          Compiled, game-ready JS (copy into the game, use as-is)
 collector/               docker-compose observability stack
   docker-compose.yml         collector + Loki + Prometheus + Tempo + Grafana
   otel-collector-config.yaml CORS-open OTLP receiver, fan-out to the three backends
