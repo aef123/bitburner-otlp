@@ -1,10 +1,10 @@
 import { NS } from "../../NetScriptDefinitions";
 import { LogLevel } from "shared/logger";
-import { OtlpClient } from "shared/otlpTelemetry";
+import { DEFAULT_OTLP_ENDPOINT, OtlpClient } from "shared/otlpTelemetry";
 
 /**
  * Example: pure user-space OpenTelemetry (logs + metrics + traces) with no game
- * (ns.telemetry) dependency. OtlpClient formats OTLP/JSON and POSTs it straight to your
+ * modifications. OtlpClient formats OTLP/JSON and POSTs it straight to your
  * collector via `fetch`. Point it at the CORS-open OTLP receiver from collector/
  * (http://localhost:4318), which forwards to Loki / Prometheus / Tempo.
  *
@@ -15,7 +15,9 @@ import { OtlpClient } from "shared/otlpTelemetry";
  * (which would cost 25 GB each).
  */
 export async function main(ns: NS): Promise<void> {
-  const endpoint = (ns.args[0] as string) ?? "http://localhost:4318";
+  // String() — a numeric arg like `run otlp-example.js 4318` must not reach
+  // OtlpClient's endpoint.replace() as a number.
+  const endpoint = String(ns.args[0] ?? DEFAULT_OTLP_ENDPOINT);
 
   const otel = new OtlpClient(ns, {
     endpoint,

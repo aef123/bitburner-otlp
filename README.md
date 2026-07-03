@@ -8,6 +8,9 @@ Collector over the browser's built-in `fetch`, and a bundled docker-compose stac
 everything in **Grafana** (Loki for logs, Prometheus for metrics, Tempo for traces) with a
 ready-made dashboard.
 
+I built this because I wanted real observability for my scripts — not `ns.print` and a
+pile of tail windows — and I didn't want to mod the game or pay a RAM tax to get it.
+
 ```
 Bitburner script ──OTLP/HTTP──> OTel Collector ──> Loki ──────┐
                                               ──> Prometheus ─┼──> Grafana
@@ -18,8 +21,12 @@ Bitburner script ──OTLP/HTTP──> OTel Collector ──> Loki ────
 
 - Bitburner scripts run as ES modules in the game's browser page, so the global `fetch`
   is in scope — and Bitburner's static RAM analysis doesn't charge for it.
-- The library speaks the OTLP/HTTP **JSON** wire format by hand (~400 lines, no
+- The library speaks the OTLP/HTTP **JSON** wire format by hand (~450 lines, no
   `@opentelemetry/*` packages, no bundler needed), so there's nothing to install in-game.
+  I looked at the official OpenTelemetry SDK first. It's a non-starter here: it wants a
+  bundler, its browser builds touch APIs the game penalizes, and the whole
+  auto-instrumentation ecosystem targets Node servers that don't exist in Bitburner. So I
+  wrote the wire format directly.
 - It never references `window` or `document`, which are the only globals Bitburner
   penalizes (25 GB each).
 
@@ -95,7 +102,7 @@ and full gang stats — the dashboard lights up with no further work. Details be
 
 ### Logs, metrics, and traces — the full client
 
-```ts
+```js
 import { OtlpClient } from "shared/otlpTelemetry";
 
 export async function main(ns) {
@@ -132,7 +139,7 @@ export async function main(ns) {
 `OtlpLogger` implements this repo's tiny `ILogger` interface and needs zero config — it
 ships logs to `http://localhost:4318` AND echoes them to the script's own tail:
 
-```ts
+```js
 import { LogLevel } from "shared/logger";
 import { OtlpLogger } from "shared/otlpTelemetry";
 
@@ -156,9 +163,9 @@ export async function main(ns) {
 | `resourceAttributes` | `{}` | Extra resource attributes on every signal |
 | `headers` | `{}` | Extra HTTP headers (e.g. auth token) |
 | `maxBatch` | `64` | Flush when buffered logs/spans reach this count |
-| `flushIntervalMs` | `5000` | Also flush when this much time has passed |
+| `flushIntervalMs` | `5000` | Also flush (on the next emit) once this much time has passed — there's no background timer |
 | `includeScriptInfo` | `true` | Tag logs/spans with the script's pid/filename/server/args |
-| `histogramBounds` | 0…10000 (12 buckets) | Explicit histogram bucket boundaries |
+| `histogramBounds` | 0…10000 (12 boundaries, 13 buckets) | Explicit histogram bucket boundaries |
 | `echoToScriptLog` | `false` (`OtlpLogger`: `true`) | Also `ns.print` each log to the script's tail |
 
 ## The metric scraper
@@ -181,11 +188,11 @@ run metric-scraper.js --logLevel 3                 tail it to watch raw income d
 | `bitburner.player.hp.current` / `.max` | gauge | | |
 | `bitburner.player.income` | counter | `source` | positive deltas of `ns.getMoneySources()`; income before scraper start isn't counted |
 | `bitburner.scripts.running` | gauge | | every running script, network-wide |
-| `bitburner.servers.ram_used` / `_total` | gauge | | owned servers only (home + purchased) |
+| `bitburner.servers.ram_used` / `_total` | gauge | | owned servers only (home + purchased, incl. cloud servers) |
 | `bitburner.faction.reputation` | gauge | `faction` | **requires Singularity (SF-4)** — skipped otherwise |
 | `bitburner.gang.*` | gauge | `faction` | respect, wanted_level, wanted_penalty, territory, power, gain rates, member_count; skipped when not in a gang |
-| `bitburner.gang.member.stat` | gauge | `member`, `stat` | six stats per member |
-| `bitburner.gang.member.earned_respect` | gauge | `member` | |
+| `bitburner.gang.member.stat` | gauge | `faction`, `member`, `stat` | six stats per member |
+| `bitburner.gang.member.earned_respect` | gauge | `faction`, `member` | |
 | `bitburner.gang.faction_reputation` | gauge | `faction` | requires SF-4 |
 
 Every series carries a `bitnode` label. Singularity- and gang-dependent metrics are
@@ -201,9 +208,10 @@ Provisioned automatically by the docker-compose stack (or import
 [`collector/grafana/dashboards/bitburner-otlp.json`](collector/grafana/dashboards/bitburner-otlp.json)
 by hand into any Grafana: Dashboards → New → Import).
 
-- **Player** — money, karma, skills, and income-per-second by source. The income panel is
-  log-scaled on purpose: hacking income can be orders of magnitude above everything else,
-  and on a linear axis it flattens every other source to zero.
+- **Player** — money, karma, skills, and income-per-second by source. I log-scaled the
+  income panel on purpose: hacking income runs orders of magnitude above everything else,
+  and on a linear axis it flattens every other source to zero. I learned that one the
+  hard way.
 - **Fleet** — running scripts and RAM used vs. total across owned servers.
 - **Factions & Gang** — reputation, gang gain rates (per 200 ms game cycle — multiply by 5
   for per-second), territory, power, member stats.
@@ -212,14 +220,23 @@ by hand into any Grafana: Dashboards → New → Import).
 
 ## Notes, limits, and honest caveats
 
+This runs inside a game's browser sandbox. Some limits come with that territory, and I'd
+rather you know them up front:
+
 - **Flush on exit is best-effort.** `ns.atExit` can't await; a killed script fires its
-  final flush but the browser may cancel the in-flight POST. Long-running scripts flushing
-  on an interval lose at most the final batch.
+  final flush but the browser may cancel the in-flight POST. I can't fully work around
+  this. Long-running scripts flushing on an interval lose at most the final batch.
+- **A downed collector doesn't lose your logs — up to a point.** Batches that fail with a
+  network error are requeued and retried on the next flush, capped at 20× `maxBatch`
+  (oldest dropped first) so a dead collector can't grow your script's memory forever.
+  HTTP-level rejections aren't retried; a batch the collector refuses is a poison batch.
 - **No automatic trace context across `await`.** There's no zone/async-hooks machinery in
-  the game realm, so spans don't auto-parent — pass the `parent` handle explicitly.
+  the game realm, so spans don't auto-parent — pass the `parent` handle explicitly. And
+  don't start a child after its parent has ended; the child becomes a new root trace (the
+  library warns in the tail when this happens).
 - **Counters reset when their script restarts.** Cumulative sums are per-client-instance.
-  Prefer keeping counters in long-lived scripts (like the scraper); Prometheus `rate()`
-  handles occasional resets gracefully anyway.
+  Keep counters in long-lived scripts (like the scraper); Prometheus `rate()` handles
+  occasional resets gracefully anyway.
 - **Watch attribute cardinality.** Each unique attribute combination is a retained series
   in script memory until exit. Tags like `target` are fine; don't tag with timestamps.
 - **CORS is mandatory.** If the browser devtools console shows a CORS error, your
@@ -250,6 +267,8 @@ src/javascript/          Compiled, game-ready JS — copy into the game and use 
 collector/               docker-compose observability stack
   docker-compose.yml         collector + Loki + Prometheus + Tempo + Grafana
   otel-collector-config.yaml CORS-open OTLP receiver, fan-out to the three backends
+  prometheus.yml             scrapes the collector's :8889 metrics endpoint
+  tempo.yaml                 minimal single-binary Tempo (local storage, 30d retention)
   grafana/                   auto-provisioned datasources + Bitburner dashboard
 ```
 

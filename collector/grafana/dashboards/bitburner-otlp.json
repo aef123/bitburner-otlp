@@ -56,7 +56,7 @@
       "fieldConfig": {
         "defaults": {
           "unit": "currencyUSD",
-          "min": 1,
+          "min": 0.01,
           "custom": {
             "scaleDistribution": { "type": "log", "log": 10 },
             "fillOpacity": 5

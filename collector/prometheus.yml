@@ -3,6 +3,9 @@ global:
 
 scrape_configs:
   # The OTel Collector re-exposes everything it receives on :8889.
+  # honor_labels keeps the job/instance labels the collector derives from each
+  # emitting service.name, instead of renaming them to exported_job/exported_instance.
   - job_name: otel-collector
+    honor_labels: true
     static_configs:
       - targets: ["otel-collector:8889"]

@@ -9,8 +9,9 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
         cors:
-          # "*" is fine for a local stack. To lock it down, list your game's
-          # origin instead, e.g. https://bitburner-official.github.io
+          # "*" is fine for a local stack. Careful locking this down to an origin
+          # list: the Steam (Electron) build of the game can present a null origin,
+          # which an allowlist would reject — the wildcard covers it.
           allowed_origins:
             - "*"
           allowed_headers:

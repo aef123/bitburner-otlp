@@ -17,10 +17,9 @@ services:
     ports:
       - "4318:4318" # OTLP/HTTP receiver — the game POSTs here
       - "8889:8889" # Prometheus scrape endpoint (internal plumbing, handy for debugging)
-    depends_on:
+    depends_on: # ordering only; the collector's exporters retry until Loki/Tempo are up
       - loki
       - tempo
-      - prometheus
 
   loki:
     image: grafana/loki:3.3.2

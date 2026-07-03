@@ -98,7 +98,8 @@ interface HistSeries {
 const DEFAULT_BOUNDS = [0, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
 
 function nowNano(): string {
-  return String(Date.now() * 1_000_000);
+  // Date.now()*1e6 exceeds Number.MAX_SAFE_INTEGER; string-concat keeps exact nanoseconds.
+  return String(Date.now()) + "000000";
 }
 function randHex(bytes: number): string {
   let s = "";
@@ -107,11 +108,20 @@ function randHex(bytes: number): string {
 }
 function toAnyValue(v: AttrValue): AnyValue {
   if (typeof v === "boolean") return { boolValue: v };
-  if (typeof v === "number") return Number.isInteger(v) ? { intValue: String(v) } : { doubleValue: v };
+  // isSafeInteger, not isInteger: 1e21 stringifies as "1e+21", which is not a valid
+  // int64 string — big Bitburner money values must go out as doubles.
+  if (typeof v === "number") return Number.isSafeInteger(v) ? { intValue: String(v) } : { doubleValue: v };
   return { stringValue: String(v) };
 }
 function toKeyValues(attrs: Attributes): KeyValue[] {
   return Object.entries(attrs).map(([key, value]) => ({ key, value: toAnyValue(value) }));
+}
+/** Merge attribute lists with unique keys (later wins) — the OTLP spec requires uniqueness. */
+function mergeKeyValues(base: KeyValue[], extra: KeyValue[]): KeyValue[] {
+  const merged = new Map<string, KeyValue>();
+  for (const kv of base) merged.set(kv.key, kv);
+  for (const kv of extra) merged.set(kv.key, kv);
+  return [...merged.values()];
 }
 function attrsKey(attrs: Attributes): string {
   return JSON.stringify(Object.entries(attrs).sort((a, b) => a[0].localeCompare(b[0])));
@@ -207,7 +217,10 @@ export class OtlpClient {
             "script.args": JSON.stringify(ns.args),
           })
         : [];
-    ns.atExit(() => void this.flush(), "otlpClient-flush");
+    // Unique id per instance: atExit replaces callbacks with the same id, so a fixed
+    // string would let a second OtlpClient in the same script clobber the first's
+    // exit flush (silently dropping its final buffered batch).
+    ns.atExit(() => void this.flush(), `otlpClient-flush-${ns.pid}-${randHex(4)}`);
   }
 
   // --- logs ---
@@ -220,7 +233,7 @@ export class OtlpClient {
       severityNumber,
       severityText,
       body: { stringValue: message },
-      attributes: [...this.scriptInfo, ...toKeyValues(attributes ?? {})],
+      attributes: mergeKeyValues(this.scriptInfo, toKeyValues(attributes ?? {})),
     });
     this.maybeFlush();
     return true;
@@ -267,6 +280,11 @@ export class OtlpClient {
   // --- traces ---
   private startSpan(name: string, options: SpanStartOptions): string {
     const parent = options.parent ? this.openSpans.get(options.parent) : undefined;
+    if (options.parent && !parent) {
+      // Parent already ended (or handle is wrong) — the child becomes a new root
+      // trace. Warn so the silent trace split is at least visible in the tail.
+      this.ns.print(`OTLP: parent span ${options.parent} for "${name}" not open (already ended?) — starting a new root trace.`);
+    }
     const spanId = randHex(8);
     const span: OpenSpan = {
       traceId: parent ? parent.traceId : randHex(16),
@@ -284,7 +302,7 @@ export class OtlpClient {
     const span = this.openSpans.get(handle);
     if (!span) return;
     this.openSpans.delete(handle);
-    if (options.attributes) span.attributes.push(...toKeyValues(options.attributes));
+    if (options.attributes) span.attributes = mergeKeyValues(span.attributes, toKeyValues(options.attributes));
     this.finishedSpans.push({
       ...span,
       endTimeUnixNano: nowNano(),
@@ -296,7 +314,8 @@ export class OtlpClient {
     this.openSpans.get(handle)?.events.push({ timeUnixNano: nowNano(), name, attributes: toKeyValues(attributes) });
   }
   private setSpanAttributes(handle: string, attributes: Attributes): void {
-    this.openSpans.get(handle)?.attributes.push(...toKeyValues(attributes));
+    const span = this.openSpans.get(handle);
+    if (span) span.attributes = mergeKeyValues(span.attributes, toKeyValues(attributes));
   }
 
   // --- flushing ---
@@ -310,8 +329,18 @@ export class OtlpClient {
     }
   }
 
-  /** Ships all buffered signals to the collector. Safe to call any time. */
-  async flush(): Promise<void> {
+  /**
+   * Ships all buffered signals to the collector. Safe to call any time. Flushes are
+   * chained so two in-flight flushes can't deliver cumulative metric snapshots out
+   * of order (Prometheus-style backends drop out-of-order samples).
+   */
+  flush(): Promise<void> {
+    this.flushChain = this.flushChain.then(() => this.doFlush());
+    return this.flushChain;
+  }
+  private flushChain: Promise<void> = Promise.resolve();
+
+  private async doFlush(): Promise<void> {
     this.lastFlush = Date.now();
     const jobs: Promise<void>[] = [];
 
@@ -323,6 +352,10 @@ export class OtlpClient {
           resourceLogs: [
             { resource: { attributes: this.resource }, scopeLogs: [{ scope: { name: "bitburner-scripts" }, logRecords }] },
           ],
+        }).then((ok) => {
+          // Network failure (collector down): requeue so the next flush retries.
+          // HTTP-level rejections (4xx) are NOT requeued — that batch is poison.
+          if (!ok) this.logBuffer = requeue(logRecords, this.logBuffer, this.maxBatch * 20);
         }),
       );
     }
@@ -334,7 +367,7 @@ export class OtlpClient {
           resourceMetrics: [
             { resource: { attributes: this.resource }, scopeMetrics: [{ scope: { name: "bitburner-scripts" }, metrics }] },
           ],
-        }),
+        }).then(() => undefined), // metrics rebuild from cumulative state — nothing to requeue
       );
     }
 
@@ -346,6 +379,8 @@ export class OtlpClient {
           resourceSpans: [
             { resource: { attributes: this.resource }, scopeSpans: [{ scope: { name: "bitburner-scripts" }, spans }] },
           ],
+        }).then((ok) => {
+          if (!ok) this.finishedSpans = requeue(spans, this.finishedSpans, this.maxBatch * 20);
         }),
       );
     }
@@ -405,13 +440,27 @@ export class OtlpClient {
     return out;
   }
 
-  private async post(path: string, payload: unknown): Promise<void> {
+  /** POSTs one payload. Returns false on NETWORK failure (collector unreachable). */
+  private async post(path: string, payload: unknown): Promise<boolean> {
     try {
       await fetch(this.base + path, { method: "POST", headers: this.headers, body: JSON.stringify(payload) });
+      return true;
     } catch (error) {
-      this.ns.print(`OTLP ${path} flush failed: ${String(error)}`);
+      try {
+        this.ns.print(`OTLP ${path} flush failed: ${String(error)}`);
+      } catch {
+        // Script already dead (exit-flush path) — swallow rather than raise an
+        // unhandled rejection from a print on a killed script.
+      }
+      return false;
     }
   }
+}
+
+/** Failed batch back in front of the live buffer, capped (newest win) so a dead collector can't grow memory forever. */
+function requeue<T>(failed: T[], live: T[], cap: number): T[] {
+  const merged = [...failed, ...live];
+  return merged.length > cap ? merged.slice(merged.length - cap) : merged;
 }
 
 /**
@@ -424,7 +473,9 @@ export class OtlpLogger implements ILogger {
   /** The underlying full client — use it to emit traces/metrics through the same connection. */
   readonly client: OtlpClient;
   constructor(ns: NS, config: Partial<OtlpConfig> = {}) {
-    this.client = new OtlpClient(ns, { endpoint: DEFAULT_OTLP_ENDPOINT, echoToScriptLog: true, ...config });
+    // endpoint is pinned after the spread so an explicit `endpoint: undefined` can't
+    // override the default and crash endpoint.replace() in the client constructor.
+    this.client = new OtlpClient(ns, { echoToScriptLog: true, ...config, endpoint: config.endpoint ?? DEFAULT_OTLP_ENDPOINT });
   }
   log(message: string, level: LogLevel = LogLevel.INFO): boolean {
     return this.client.logs.log(message, level);
